@@ -53,10 +53,6 @@ Your first task is to devise a plan for how you will solve this task. Generate a
 
 Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
 `
-var systemPrompt1 = `You are a 10x software engineer. You will be given a question or task about a software project. You job is to answer or solve that task.
-
-Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
-`
 
 func Run(ctx context.Context, apiKey string) error {
 	client := anthropic.NewClient(apiKey)
