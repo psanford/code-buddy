@@ -84,10 +84,27 @@ func (a *CatArgs) PrettyCommand() string {
 	return fmt.Sprintf("cat %s", a.Filename)
 }
 
+type ModifyFileArgs struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+}
+
+func (a *ModifyFileArgs) Run() (string, error) {
+	err := os.WriteFile(a.Filename, []byte(a.Content), 0644)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("File %s has been modified successfully.", a.Filename), nil
+}
+
+func (a *ModifyFileArgs) PrettyCommand() string {
+	return fmt.Sprintf("cat > %s <<-EOF\n%s\n\nEOF\n# destination: %s", a.Filename, a.Content, a.Filename)
+}
+
 var tools = []claude.Tool{
 	{
 		Name:        "list_files",
-		Description: "List files in the project. The list of files can be filtered by providing a regular expression to this function. This is equivelent to running `rg --files | rg $pattern`",
+		Description: "List files in the project. The list of files can be filtered by providing a regular expression to this function. This is equivalent to running `rg --files | rg $pattern`",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]struct {
@@ -138,6 +155,27 @@ var tools = []claude.Tool{
 				},
 			},
 			Required: []string{"filename"},
+		},
+	},
+	{
+		Name:        "modify_file",
+		Description: "Modify the contents of a file. You MUST provide the full contents of the file!",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]struct {
+				Description string `json:"description"`
+				Type        string `json:"type"`
+			}{
+				"filename": {
+					Description: "The name of the file to modify",
+					Type:        "string",
+				},
+				"content": {
+					Description: "The new content to write to the file",
+					Type:        "string",
+				},
+			},
+			Required: []string{"filename", "content"},
 		},
 	},
 }

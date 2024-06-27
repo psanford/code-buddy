@@ -147,6 +147,8 @@ func Run(ctx context.Context, apiKey string) error {
 						args = &RGArgs{}
 					case "cat":
 						args = &CatArgs{}
+					case "modify_file":
+						args = &ModifyFileArgs{}
 					default:
 						return fmt.Errorf("unknown tool %s", blk.ToolName)
 					}
