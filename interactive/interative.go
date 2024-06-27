@@ -115,9 +115,14 @@ func Run(ctx context.Context, apiKey string) error {
 			acc := accumulator.New(client)
 
 			go func() {
+				var lastText string
 				for cb := range cbCh {
 					fmt.Print(cb.Text)
+					lastText = cb.Text
 					os.Stdout.Sync()
+				}
+				if !strings.HasSuffix(lastText, "\n") {
+					fmt.Println()
 				}
 			}()
 
