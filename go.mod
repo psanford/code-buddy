@@ -3,6 +3,7 @@ module github.com/psanford/code-buddy
 go 1.22.3
 
 require (
+	github.com/chzyer/readline v1.5.1
 	github.com/psanford/claude v0.0.0-20240626153353-2cd489f01a00
 	github.com/spf13/cobra v1.8.1
 )

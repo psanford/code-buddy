@@ -8,8 +8,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
+	"github.com/chzyer/readline"
 	"github.com/psanford/claude"
 	"github.com/psanford/claude/anthropic"
 	"github.com/psanford/code-buddy/accumulator"
@@ -33,9 +35,18 @@ func Run(ctx context.Context, apiKey, model string) error {
 		client  = anthropic.NewClient(apiKey)
 	)
 
+	rl := readlinePrompt()
+	defer rl.Close()
+
 	for {
-		userPrompt, err := readUserPrompt(stdin)
-		if err == io.EOF {
+		userPrompt, err := rl.Readline()
+		if err == readline.ErrInterrupt {
+			if len(userPrompt) == 0 {
+				break
+			} else {
+				continue
+			}
+		} else if err == io.EOF {
 			break
 		} else if err != nil {
 			return err
@@ -240,4 +251,38 @@ func helpMsg() {
 /reset      - clear all history and start again
 /history    - show full conversation history
 /quit       - exit program`)
+}
+
+func readlinePrompt() *readline.Instance {
+	cacheDirRoot, _ := os.UserCacheDir()
+	if cacheDirRoot == "" {
+		cacheDirRoot = filepath.Join(os.Getenv("HOME"), ".cache")
+	}
+
+	cacheDir := filepath.Join(cacheDirRoot, "code-buddy")
+	os.MkdirAll(cacheDir, 0700)
+
+	historyFile := filepath.Join(cacheDir, ".history")
+
+	completer := readline.NewPrefixCompleter(
+		readline.PcItem("/help"),
+		readline.PcItem("/reset"),
+		readline.PcItem("/history"),
+		readline.PcItem("/quit"),
+	)
+
+	l, err := readline.NewEx(&readline.Config{
+		Prompt:            "prompt> ",
+		HistoryFile:       historyFile,
+		AutoComplete:      completer,
+		InterruptPrompt:   "^C",
+		EOFPrompt:         "/quit",
+		HistorySearchFold: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	l.CaptureExitSignal()
+
+	return l
 }
