@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,36 +13,7 @@ import (
 	"github.com/psanford/claude"
 	"github.com/psanford/claude/anthropic"
 	"github.com/psanford/code-buddy/accumulator"
-	"github.com/spf13/cobra"
 )
-
-var (
-	modelFlag string
-)
-
-func Command() *cobra.Command {
-	cmd := cobra.Command{
-		Use:   "interactive",
-		Short: "run interactive mode",
-		Run: func(cmd *cobra.Command, args []string) {
-			ctx := context.Background()
-
-			apiKey := os.Getenv("CLAUDE_API_KEY")
-			if apiKey == "" {
-				log.Fatalf("Must set environment variable CLAUDE_API_KEY")
-			}
-
-			err := Run(ctx, apiKey)
-			if err != nil {
-				log.Fatal(err)
-			}
-		},
-	}
-
-	cmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, "model")
-
-	return &cmd
-}
 
 var systemPrompt = `You are a 10x software engineer. You will be given a question or task about a software project. You job is to answer or solve that task.
 
@@ -53,7 +23,7 @@ Generate all of the relevant information necessary to pass along to another soft
 <context>project=%s</context>
 `
 
-func Run(ctx context.Context, apiKey string) error {
+func Run(ctx context.Context, apiKey, model string) error {
 
 	var (
 		turns []claude.MessageTurn
@@ -100,7 +70,7 @@ func Run(ctx context.Context, apiKey string) error {
 		})
 
 		req := &claude.MessageRequest{
-			Model:  claude.Claude3Dot5Sonnet,
+			Model:  model,
 			Stream: true,
 			System: fmt.Sprintf(systemPrompt, project),
 			Tools:  tools,
