@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,14 +26,20 @@ Generate all of the relevant information necessary to pass along to another soft
 <context>project=%s</context>
 `
 
-func Run(ctx context.Context, apiKey, model string) error {
+type Runner struct {
+	APIKey      string
+	Model       string
+	DebugLogger *slog.Logger
+}
+
+func (r *Runner) Run(ctx context.Context) error {
 
 	var (
 		turns []claude.MessageTurn
 
 		project = inferProject()
 		stdin   = bufio.NewReader(os.Stdin)
-		client  = anthropic.NewClient(apiKey)
+		client  = anthropic.NewClient(r.APIKey)
 	)
 
 	rl := readlinePrompt()
@@ -81,7 +88,7 @@ func Run(ctx context.Context, apiKey, model string) error {
 		})
 
 		req := &claude.MessageRequest{
-			Model:  model,
+			Model:  r.Model,
 			Stream: true,
 			System: fmt.Sprintf(systemPrompt, project),
 			Tools:  tools,
@@ -95,7 +102,11 @@ func Run(ctx context.Context, apiKey, model string) error {
 
 			acc := accumulator.New(client)
 
+			waitOnText := make(chan struct{})
+
 			go func() {
+				defer close(waitOnText)
+
 				var lastText string
 				for cb := range cbCh {
 					fmt.Print(cb.Text)
@@ -156,6 +167,8 @@ func Run(ctx context.Context, apiKey, model string) error {
 				Role:    "assistant",
 				Content: turnContents,
 			})
+
+			<-waitOnText
 
 			for _, content := range turnContents {
 				blk, ok := content.(*claude.TurnContentToolUse)

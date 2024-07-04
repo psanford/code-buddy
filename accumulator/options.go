@@ -1,5 +1,7 @@
 package accumulator
 
+import "log/slog"
+
 type Option interface {
 	set(*Accumulator)
 }
@@ -22,4 +24,18 @@ func (c *contentBlockDeltaChan) set(a *completeOptions) {
 
 func WithContentBlockDeltaChan(ch chan ContentBlock) CompleteOption {
 	return &contentBlockDeltaChan{ch}
+}
+
+type debugLoggerOption struct {
+	l *slog.Logger
+}
+
+func (o *debugLoggerOption) set(a *Accumulator) {
+	a.debugLogger = o.l
+}
+
+func WithDebugLogger(l *slog.Logger) Option {
+	return &debugLoggerOption{
+		l: l,
+	}
 }

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"log/slog"
 	"os"
 
 	"github.com/psanford/claude"
@@ -12,6 +13,7 @@ import (
 
 var (
 	modelFlag string
+	debugLog  string
 )
 var rootCmd = &cobra.Command{
 	Use:   "code-buddy",
@@ -25,7 +27,21 @@ var rootCmd = &cobra.Command{
 			log.Fatalf("Must set environment variable CLAUDE_API_KEY")
 		}
 
-		err := interactive.Run(ctx, apiKey, modelFlag)
+		r := interactive.Runner{
+			APIKey: apiKey,
+			Model:  modelFlag,
+		}
+
+		if debugLog != "" {
+			f, err := os.OpenFile(debugLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+			r.DebugLogger = slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		}
+
+		err := r.Run(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -34,6 +50,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() error {
 	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, "model")
+	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
 
 	return rootCmd.Execute()
 }

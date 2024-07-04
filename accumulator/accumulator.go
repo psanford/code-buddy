@@ -2,7 +2,9 @@ package accumulator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/psanford/claude"
@@ -12,6 +14,7 @@ import (
 type Accumulator struct {
 	client                clientiface.Client
 	contentBlockDeltaChan chan ContentBlock
+	debugLogger           *slog.Logger
 }
 
 func New(client clientiface.Client, options ...Option) *Accumulator {
@@ -79,6 +82,13 @@ func (a *Accumulator) Complete(ctx context.Context, req *claude.MessageRequest, 
 	var startMsg claude.MessageStart
 
 	for resp := range mr.Responses() {
+		if a.debugLogger != nil && a.debugLogger.Enabled(ctx, slog.LevelDebug) {
+			mj, err := json.Marshal(resp)
+			if err != nil {
+				panic(err)
+			}
+			a.debugLogger.Debug("message response", "resp", mj)
+		}
 		switch ev := resp.Data.(type) {
 		case *claude.MessagePing:
 		case *claude.MessageStart:
