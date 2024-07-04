@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/psanford/claude"
 	"github.com/psanford/code-buddy/interactive"
@@ -49,7 +51,8 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() error {
-	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, "model")
+	models := claude.CurrentModels()
+	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, fmt.Sprintf("model name (%s)", strings.Join(models, ",")))
 	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
 
 	return rootCmd.Execute()
