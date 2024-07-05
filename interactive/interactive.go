@@ -3,8 +3,6 @@ package interactive
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,38 +18,29 @@ import (
 	"github.com/psanford/code-buddy/accumulator"
 )
 
-var base64Text = `
-In this environment, you can invoke tools using a "<function_call>" block like the following:
-<function_call name="$FUNCTION_NAME>
-<parameter name="$PARAM_NAME" encoding="text|base64">$PARAM_VALUE</parameter>
-</function_call>
-
-You should not send anything after a function_call so that I can invoke the function for you and return the results to you.
-
-If $PARAM_VALUE might include any xml tags, it MUST be base64 encoded. Set the encoding="base64" in the parameter in
-that case. Do NOT put a trailing newline at the end of $PARAM_VALUE before base64 encoding it.
-`
-
-var nonBase64Text = `
-In this environment, you can invoke tools using a "<function_call>" block like the following:
-<function_call name="$FUNCTION_NAME>
-<parameter name="$PARAM_NAME">$PARAM_VALUE</parameter>
-</function_call>
-
-You should not send anything after a function_call so that I can invoke the function for you and return the results to you.
-
-Do NOT put a trailing newline at the end of $PARAM_VALUE before base64 encoding it.
-`
-
-var systemPrompt0 = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+var rawSystemPrompt = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
 
 Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
 
 Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
 
-<context>project=%s</context>`
+<context>
+project=%s
+first 10 files in project:
+%s
+file_count=%d
+</context>
 
-var systemPrompt1 = `
+In this environment, you can invoke tools using the following syntax:
+#function_call,function,$FUNCTION_NAME
+#function_call,parameter,$PARAM_NAME
+$PARAM_VALUE
+#function_call,end_parameter
+#function_call,end_function
+#function_call,invoke
+
+Each #function_call directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you.
+
 The response will be in the form:
 <function_result>
 <stdout>$STDOUT</stdout>
@@ -99,7 +88,6 @@ type Runner struct {
 	APIKey      string
 	Model       string
 	DebugLogger *slog.Logger
-	UseBase64   bool
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -111,6 +99,19 @@ func (r *Runner) Run(ctx context.Context) error {
 		stdin   = bufio.NewReader(os.Stdin)
 		client  = anthropic.NewClient(r.APIKey)
 	)
+
+	rgOut, err := exec.Command("rg", "--files").CombinedOutput()
+	if err != nil {
+		return err
+	}
+	rgFileLines := strings.Split(string(rgOut), "\n")
+	fileCount := len(rgFileLines)
+	if fileCount > 10 {
+		rgFileLines = rgFileLines[:9]
+	}
+
+	funCallReversed := reverseString("function_call")
+	fixedSystemPrompt := strings.ReplaceAll(rawSystemPrompt, "function_call", funCallReversed)
 
 	rl := readlinePrompt()
 	defer rl.Close()
@@ -157,16 +158,13 @@ func (r *Runner) Run(ctx context.Context) error {
 			},
 		})
 
-		systemPrompt := systemPrompt0 + nonBase64Text + systemPrompt1
-		if r.UseBase64 {
-			systemPrompt = systemPrompt0 + base64Text + systemPrompt1
-		}
+		stopSeq := commandPrefix + ",invoke"
 
 		req := &claude.MessageRequest{
 			Model:         r.Model,
 			Stream:        true,
-			System:        fmt.Sprintf(systemPrompt, project),
-			StopSequences: []string{"</function_call>"},
+			System:        fmt.Sprintf(fixedSystemPrompt, project, rgFileLines, fileCount),
+			StopSequences: []string{stopSeq},
 		}
 
 		moreWork := true
@@ -216,32 +214,17 @@ func (r *Runner) Run(ctx context.Context) error {
 				if blk.Type() != "text" {
 					continue
 				}
-				xmlStart := strings.Index(blk.Text, "<function_call ")
-				if xmlStart < 0 {
-					continue
-				}
 
-				xmlContent := blk.Text[xmlStart:]
-				if !strings.HasSuffix(xmlContent, "</function_call>") {
-					xmlContent = xmlContent + "</function_call>"
-				}
-				var functionCall FunctionCall
-				err := xml.Unmarshal([]byte(xmlContent), &functionCall)
-				if err != nil {
+				functionCall, err := parseCommand(blk.Text)
+				if err == io.EOF {
+					continue
+				} else if err != nil {
 					return err
 				}
 
 				paramMap := make(map[string]string)
 				for _, p := range functionCall.Parameters {
-					if p.Encoding == "base64" {
-						v, err := base64.StdEncoding.DecodeString(p.Value)
-						if err != nil {
-							return err
-						}
-						paramMap[p.Name] = string(v)
-					} else {
-						paramMap[p.Name] = string(p.Value)
-					}
+					paramMap[p.Name] = string(p.Value)
 				}
 
 				switch functionCall.Name {
@@ -418,13 +401,28 @@ func readlinePrompt() *readline.Instance {
 }
 
 type FunctionCall struct {
-	XMLName    xml.Name            `xml:"function_call"`
 	Name       string              `xml:"name,attr"`
 	Parameters []FunctionParameter `xml:"parameter"`
 }
 
 type FunctionParameter struct {
-	Name     string `xml:"name,attr"`
-	Encoding string `xml:"encoding,attr"`
-	Value    string `xml:",chardata"`
+	Name  string
+	Value string
+}
+
+func reverseString(input string) string {
+	rune := make([]rune, len(input))
+
+	var n int
+	for _, r := range input {
+		rune[n] = r
+		n++
+	}
+	rune = rune[0:n]
+
+	for i := 0; i < n/2; i++ {
+		rune[i], rune[n-1-i] = rune[n-1-i], rune[i]
+	}
+
+	return string(rune)
 }

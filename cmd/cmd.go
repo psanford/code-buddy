@@ -6,7 +6,9 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/psanford/claude"
 	"github.com/psanford/code-buddy/config"
@@ -17,14 +19,23 @@ import (
 var (
 	modelFlag string
 	debugLog  string
-	useBase64 bool
 )
 var rootCmd = &cobra.Command{
 	Use:   "code-buddy",
 	Short: "A Claude Code Exploration Tool",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+		go func() {
+			s := <-c
+			log.Println("got signal:", s)
+			cancel()
+		}()
 
 		var apiKey string
 
@@ -43,9 +54,8 @@ var rootCmd = &cobra.Command{
 		}
 
 		r := interactive.Runner{
-			APIKey:    apiKey,
-			Model:     modelFlag,
-			UseBase64: useBase64,
+			APIKey: apiKey,
+			Model:  modelFlag,
 		}
 
 		if debugLog != "" {
@@ -69,7 +79,6 @@ func Execute() error {
 	models := claude.CurrentModels()
 	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, fmt.Sprintf("model name (%s)", strings.Join(models, ",")))
 	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
-	rootCmd.Flags().BoolVar(&useBase64, "b64", false, "Use base64 for function parameters")
 
 	return rootCmd.Execute()
 }
