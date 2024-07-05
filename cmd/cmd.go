@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/psanford/claude"
+	"github.com/psanford/code-buddy/config"
 	"github.com/psanford/code-buddy/interactive"
 	"github.com/spf13/cobra"
 )
@@ -16,6 +17,7 @@ import (
 var (
 	modelFlag string
 	debugLog  string
+	useBase64 bool
 )
 var rootCmd = &cobra.Command{
 	Use:   "code-buddy",
@@ -24,14 +26,26 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 
-		apiKey := os.Getenv("CLAUDE_API_KEY")
+		var apiKey string
+
+		conf, err := config.LoadConfig()
+		if err != nil && err != config.NoConfigErr {
+			log.Fatalf("Read config file err: %s", err)
+		}
+
+		apiKey = conf.AnthropicApiKey
+
 		if apiKey == "" {
-			log.Fatalf("Must set environment variable CLAUDE_API_KEY")
+			apiKey = os.Getenv("CLAUDE_API_KEY")
+			if apiKey == "" {
+				log.Fatalf("No API key found in config file %s or environment variable CLAUDE_API_KEY", config.ConfigFilePath())
+			}
 		}
 
 		r := interactive.Runner{
-			APIKey: apiKey,
-			Model:  modelFlag,
+			APIKey:    apiKey,
+			Model:     modelFlag,
+			UseBase64: useBase64,
 		}
 
 		if debugLog != "" {
@@ -44,7 +58,7 @@ var rootCmd = &cobra.Command{
 			r.DebugLogger.Debug("start debug logger")
 		}
 
-		err := r.Run(ctx)
+		err = r.Run(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -55,6 +69,7 @@ func Execute() error {
 	models := claude.CurrentModels()
 	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, fmt.Sprintf("model name (%s)", strings.Join(models, ",")))
 	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
+	rootCmd.Flags().BoolVar(&useBase64, "b64", false, "Use base64 for function parameters")
 
 	return rootCmd.Execute()
 }

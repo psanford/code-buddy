@@ -20,27 +20,19 @@ import (
 	"github.com/psanford/code-buddy/accumulator"
 )
 
-var systemPrompt = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+var base64Text = `
+In this environment, you can invoke tools using a "<function_call>" block like the following:
+<function_call name="$FUNCTION_NAME>
+<parameter name="$PARAM_NAME" encoding="text|base64">$PARAM_VALUE</parameter>
+</function_call>
 
-Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform, considering the following:
+You should not send anything after a function_call so that I can invoke the function for you and return the results to you.
 
-1. Write clean, efficient, and well-documented code.
-2. Implement proper error handling.
-3. Follow industry-standard best practices and design patterns.
-4. Consider security implications in your solutions.
-5. Design with modularity and reusability in mind.
-6. Consider performance implications of your solutions.
+If $PARAM_VALUE might include any xml tags, it MUST be base64 encoded. Set the encoding="base64" in the parameter in
+that case. Do NOT put a trailing newline at the end of $PARAM_VALUE before base64 encoding it.
+`
 
-You can revise this list later as you learn new things along the way. Provide brief explanations for your decisions and approaches.
-
-When making changes to files, consider version control best practices. If you're modifying existing code, consider updating or adding tests to ensure the changes don't introduce regressions.
-
-Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide, so be sure to include all relevant information necessary to perform the next step. This includes any code changes, file locations, and context about the project and task at hand.
-
-<context>project=%s</context>
-
-Keep the project context in mind when proposing solutions and making changes.
-
+var nonBase64Text = `
 In this environment, you can invoke tools using a "<function_call>" block like the following:
 <function_call name="$FUNCTION_NAME>
 <parameter name="$PARAM_NAME">$PARAM_VALUE</parameter>
@@ -48,8 +40,18 @@ In this environment, you can invoke tools using a "<function_call>" block like t
 
 You should not send anything after a function_call so that I can invoke the function for you and return the results to you.
 
-Always base64 encode the $PARAM_VALUE.
+Do NOT put a trailing newline at the end of $PARAM_VALUE before base64 encoding it.
+`
 
+var systemPrompt0 = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+
+Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
+
+Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
+
+<context>project=%s</context>`
+
+var systemPrompt1 = `
 The response will be in the form:
 <function_result>
 <stdout>$STDOUT</stdout>
@@ -76,19 +78,19 @@ You should prefer this function to write_file whenever you are making partial up
 </function
 
 <function name="list_files">
-<parameter name="pattern">
+<parameter name="pattern"/>
 <description>List files in the project. The list of files can be filtered by providing a regular expression to this function. This is equivalent to running "rg --files | rg $pattern"</description>
 </function>
 
 <function name="rg">
-<parameter name="pattern">
-<parameter name="directory">
+<parameter name="pattern"/>
+<parameter name="directory"/>
 <description>rg (ripgrep) is a tool for recursively searching for lines matching a regex pattern.</description>
 </function>
 
 
 <function name="cat">
-<parameter name="filename">
+<parameter name="filename"/>
 <description>Read the contents of a file</description>
 </function>
 `
@@ -97,6 +99,7 @@ type Runner struct {
 	APIKey      string
 	Model       string
 	DebugLogger *slog.Logger
+	UseBase64   bool
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -154,10 +157,16 @@ func (r *Runner) Run(ctx context.Context) error {
 			},
 		})
 
+		systemPrompt := systemPrompt0 + nonBase64Text + systemPrompt1
+		if r.UseBase64 {
+			systemPrompt = systemPrompt0 + base64Text + systemPrompt1
+		}
+
 		req := &claude.MessageRequest{
-			Model:  r.Model,
-			Stream: true,
-			System: fmt.Sprintf(systemPrompt, project),
+			Model:         r.Model,
+			Stream:        true,
+			System:        fmt.Sprintf(systemPrompt, project),
+			StopSequences: []string{"</function_call>"},
 		}
 
 		moreWork := true
@@ -200,7 +209,9 @@ func (r *Runner) Run(ctx context.Context) error {
 			for _, content := range respMeta.Content {
 				turnContents = append(turnContents, content)
 				blk := content.(*accumulator.ContentBlock)
-				r.DebugLogger.Debug("content_block", "blk", blk)
+				if r.DebugLogger != nil && r.DebugLogger.Enabled(ctx, slog.LevelDebug) {
+					r.DebugLogger.Debug("content_block", "blk", blk)
+				}
 
 				if blk.Type() != "text" {
 					continue
@@ -211,6 +222,9 @@ func (r *Runner) Run(ctx context.Context) error {
 				}
 
 				xmlContent := blk.Text[xmlStart:]
+				if !strings.HasSuffix(xmlContent, "</function_call>") {
+					xmlContent = xmlContent + "</function_call>"
+				}
 				var functionCall FunctionCall
 				err := xml.Unmarshal([]byte(xmlContent), &functionCall)
 				if err != nil {
@@ -219,11 +233,15 @@ func (r *Runner) Run(ctx context.Context) error {
 
 				paramMap := make(map[string]string)
 				for _, p := range functionCall.Parameters {
-					v, err := base64.StdEncoding.DecodeString(p.Value)
-					if err != nil {
-						return err
+					if p.Encoding == "base64" {
+						v, err := base64.StdEncoding.DecodeString(p.Value)
+						if err != nil {
+							return err
+						}
+						paramMap[p.Name] = string(v)
+					} else {
+						paramMap[p.Name] = string(p.Value)
 					}
-					paramMap[p.Name] = string(v)
 				}
 
 				switch functionCall.Name {
@@ -406,6 +424,7 @@ type FunctionCall struct {
 }
 
 type FunctionParameter struct {
-	Name  string `xml:"name,attr"`
-	Value string `xml:",chardata"`
+	Name     string `xml:"name,attr"`
+	Encoding string `xml:"encoding,attr"`
+	Value    string `xml:",chardata"`
 }
