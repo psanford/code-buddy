@@ -8,8 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-
-	"github.com/psanford/claude"
+	"strings"
 )
 
 type ListFilesArgs struct {
@@ -65,7 +64,7 @@ func (a *RGArgs) PrettyCommand() string {
 func (a *RGArgs) Run() (string, error) {
 	cmdOut, err := cmdCombinedOutput("rg", a.Pattern, a.Directory)
 	if err != nil {
-		return "", err
+		return fmt.Sprintf("cmd err:%s output:%s", err, cmdOut), nil
 	}
 
 	return string(cmdOut), nil
@@ -101,81 +100,27 @@ func (a *ModifyFileArgs) PrettyCommand() string {
 	return fmt.Sprintf("cat > %s <<-EOF\n%s\n\nEOF\n# destination: %s", a.Filename, a.Content, a.Filename)
 }
 
-var tools = []claude.Tool{
-	{
-		Name:        "list_files",
-		Description: "List files in the project. The list of files can be filtered by providing a regular expression to this function. This is equivalent to running `rg --files | rg $pattern`",
-		InputSchema: InputSchema{
-			Type: "object",
-			Properties: map[string]struct {
-				Description string `json:"description"`
-				Type        string `json:"type"`
-			}{
-				"pattern": {
-					Description: "The ripgrep regex pattern to filter files",
-					Type:        "string",
-				},
-			},
-			Required: []string{"pattern"},
-		},
-	},
-	{
-		Name:        "rg",
-		Description: "rg (ripgrep) is a tool for recursively searching for lines matching a regex pattern.",
-		InputSchema: InputSchema{
-			Type: "object",
-			Properties: map[string]struct {
-				Description string `json:"description"`
-				Type        string `json:"type"`
-			}{
-				"pattern": {
-					Description: "The regex pattern to search for",
-					Type:        "string",
-				},
-				"directory": {
-					Description: "The directory to search in",
-					Type:        "string",
-				},
-			},
-			Required: []string{"pattern", "directory"},
-		},
-	},
-	{
-		Name:        "cat",
-		Description: "Read the contents of a file",
-		InputSchema: InputSchema{
-			Type: "object",
-			Properties: map[string]struct {
-				Description string `json:"description"`
-				Type        string `json:"type"`
-			}{
-				"filename": {
-					Description: "The name of the file to read",
-					Type:        "string",
-				},
-			},
-			Required: []string{"filename"},
-		},
-	},
-	{
-		Name:        "modify_file",
-		Description: "Modify the contents of a file. You MUST provide the full contents of the file!",
-		InputSchema: InputSchema{
-			Type: "object",
-			Properties: map[string]struct {
-				Description string `json:"description"`
-				Type        string `json:"type"`
-			}{
-				"filename": {
-					Description: "The name of the file to modify",
-					Type:        "string",
-				},
-				"content": {
-					Description: "The new content to write to the file",
-					Type:        "string",
-				},
-			},
-			Required: []string{"filename", "content"},
-		},
-	},
+type ReplaceStringInFileArgs struct {
+	Filename       string
+	OriginalString string
+	NewString      string
+	Count          int
+}
+
+func (a *ReplaceStringInFileArgs) Run() (string, error) {
+	content, err := os.ReadFile(a.Filename)
+	if err != nil {
+		return "", err
+	}
+
+	rep := strings.Replace(string(content), a.OriginalString, a.NewString, a.Count)
+	err = os.WriteFile(a.Filename, []byte(rep), 0644)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("File %s has been modified successfully.", a.Filename), nil
+}
+
+func (a *ReplaceStringInFileArgs) PrettyCommand() string {
+	return fmt.Sprintf("# replace string in file %s (count %d)\n==== old ====\n%s\n==== new ====%s\n====     ====\n# in %s", a.Filename, a.Count, a.OriginalString, a.NewString, a.Filename)
 }

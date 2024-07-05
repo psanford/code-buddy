@@ -3,13 +3,14 @@ package interactive
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -24,6 +25,55 @@ Your first task is to devise a plan for how you will solve this task. Generate a
 
 Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
 <context>project=%s</context>
+
+In this environment, you can invoke tools using a "<function_call>" block like the following:
+<function_call name="$FUNCTION_NAME>
+<parameter name="$PARAM_NAME">$PARAM_VALUE</parameter>
+</function_call>
+
+You should not send anything after a function_call so that I can invoke the function for you and return the results to you.
+
+The response will be in the form:
+<function_result>
+<stdout>$STDOUT</stdout>
+<stderr>$STDERR</stderr>
+<exit_code>$EXIT_CODE</exit_code>
+</function_result>
+
+The available functions that you can invoke this way are:
+
+<function name="write_file">
+<parameter name="filename"/>
+<parameter name="content"/>
+<description>Modify the full contents of a file. You MUST provide the full contents of the file!</description>
+</function>
+
+<function name="replace_string_in_file">
+<parameter name="filename"/>
+<parameter name="original_string"/>
+<parameter name="new_string"/>
+<parameter name="count"/>
+<description>Partially modify the contents of a file. This works the same way as Go's string.Replace() function: Replace returns a copy of the string s with the first n non-overlapping instances of old replaced by new. If old is empty, it matches at the beginning of the string and after each UTF-8 sequence, yielding up to k+1 replacements for a k-rune string. If n < 0, there is no limit on the number of replacements.
+You should prefer this function to write_file whenever you are making partial updates to a file.
+</description>
+</function
+
+<function name="list_files">
+<parameter name="pattern">
+<description>List files in the project. The list of files can be filtered by providing a regular expression to this function. This is equivalent to running "rg --files | rg $pattern"</description>
+</function>
+
+<function name="rg">
+<parameter name="pattern">
+<parameter name="directory">
+<description>rg (ripgrep) is a tool for recursively searching for lines matching a regex pattern.</description>
+</function>
+
+
+<function name="cat">
+<parameter name="filename">
+<description>Read the contents of a file</description>
+</function>
 `
 
 type Runner struct {
@@ -91,7 +141,6 @@ func (r *Runner) Run(ctx context.Context) error {
 			Model:  r.Model,
 			Stream: true,
 			System: fmt.Sprintf(systemPrompt, project),
-			Tools:  tools,
 		}
 
 		moreWork := true
@@ -100,7 +149,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			moreWork = false
 			cbCh := make(chan accumulator.ContentBlock)
 
-			acc := accumulator.New(client)
+			acc := accumulator.New(client, accumulator.WithDebugLogger(r.DebugLogger))
 
 			waitOnText := make(chan struct{})
 
@@ -127,39 +176,62 @@ func (r *Runner) Run(ctx context.Context) error {
 
 			turnContents := make([]claude.TurnContent, 0, len(respMeta.Content))
 
+			var cmd Cmd
+
 			for _, content := range respMeta.Content {
+				turnContents = append(turnContents, content)
 				blk := content.(*accumulator.ContentBlock)
+				r.DebugLogger.Debug("content_block", "blk", blk)
 
-				if blk.Type() == "tool_use" {
-					var args Cmd
-					switch blk.ToolName {
-					case "list_files":
-						args = &ListFilesArgs{}
-					case "rg":
-						args = &RGArgs{}
-					case "cat":
-						args = &CatArgs{}
-					case "modify_file":
-						args = &ModifyFileArgs{}
-					default:
-						return fmt.Errorf("unknown tool %s", blk.ToolName)
+				if blk.Type() != "text" {
+					continue
+				}
+				xmlStart := strings.Index(blk.Text, "<function_call ")
+				if xmlStart < 0 {
+					continue
+				}
+
+				xmlContent := blk.Text[xmlStart:]
+				var functionCall FunctionCall
+				err := xml.Unmarshal([]byte(xmlContent), &functionCall)
+				if err != nil {
+					return err
+				}
+
+				paramMap := make(map[string]string)
+				for _, p := range functionCall.Parameters {
+					paramMap[p.Name] = p.Value
+				}
+
+				switch functionCall.Name {
+				case "list_files":
+					cmd = &ListFilesArgs{
+						Pattern: paramMap["pattern"],
 					}
-
-					text := content.TextContent()
-					err = json.Unmarshal([]byte(text), args)
-					if err != nil {
-						return fmt.Errorf("json unmarshal args for %s err: %s text:<%s>", blk.ToolName, err, text)
+				case "rg":
+					cmd = &RGArgs{
+						Pattern:   paramMap["pattern"],
+						Directory: paramMap["directory"],
 					}
-
-					turnContents = append(turnContents, &claude.TurnContentToolUse{
-						Typ:   blk.Typ,
-						ID:    blk.ToolID,
-						Name:  blk.ToolName,
-						Input: args,
-					})
-
-				} else {
-					turnContents = append(turnContents, content)
+				case "cat":
+					cmd = &CatArgs{
+						Filename: paramMap["filename"],
+					}
+				case "write_file":
+					cmd = &ModifyFileArgs{
+						Filename: paramMap["filename"],
+						Content:  paramMap["content"],
+					}
+				case "replace_string_in_file":
+					count, _ := strconv.Atoi(paramMap["count"])
+					cmd = &ReplaceStringInFileArgs{
+						Filename:       paramMap["filename"],
+						OriginalString: paramMap["original_string"],
+						NewString:      paramMap["new_string"],
+						Count:          count,
+					}
+				default:
+					return fmt.Errorf("unknown tool %s", blk.ToolName)
 				}
 			}
 
@@ -170,47 +242,51 @@ func (r *Runner) Run(ctx context.Context) error {
 
 			<-waitOnText
 
-			for _, content := range turnContents {
-				blk, ok := content.(*claude.TurnContentToolUse)
+			if cmd != nil {
+				fmt.Printf("\nRequest to run command:\n\n%s\n\n", cmd.PrettyCommand())
+				fmt.Print("ok? (y/N):")
+				os.Stdout.Sync()
 
-				if ok {
-					cmd := blk.Input.(Cmd)
-
-					fmt.Printf("\nRequest to run command:\n\n%s\n\n", cmd.PrettyCommand())
-					fmt.Print("ok? (y/N):")
-					os.Stdout.Sync()
-
-					var acceptCmd bool
-					line, err := stdin.ReadString('\n')
-					if err != nil {
-						return fmt.Errorf("Error reading from stdin: %w\n", err)
-					}
-					line = strings.TrimSpace(line)
-					if line == "y" {
-						acceptCmd = true
-					}
-
-					if !acceptCmd {
-						return fmt.Errorf("Command not accepted, aborting")
-					}
-
-					cmdOut, err := cmd.Run()
-					if err != nil {
-						return err
-					}
-
-					fmt.Printf("\nOutput: %s\n\n", cmdOut)
-
-					toolResp := claude.MessageTurn{
-						Role: "user",
-						Content: []claude.TurnContent{
-							claude.ToolResultContent(blk.ID, cmdOut),
-						},
-					}
-
-					turns = append(turns, toolResp)
-					moreWork = true
+				var acceptCmd bool
+				line, err := stdin.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("Error reading from stdin: %w\n", err)
 				}
+				line = strings.TrimSpace(line)
+				if line == "y" {
+					acceptCmd = true
+				}
+
+				if !acceptCmd {
+					return fmt.Errorf("Command not accepted, aborting")
+				}
+
+				var (
+					stderr    string
+					errorCode int
+				)
+				cmdOut, err := cmd.Run()
+				if err != nil {
+					fmt.Printf("\nCMD ERROR: %s\n", err)
+					stderr = err.Error()
+					errorCode = 1
+				}
+
+				fmt.Printf("\nOutput: %s\n\n", cmdOut)
+
+				toolResp := claude.MessageTurn{
+					Role: "user",
+					Content: []claude.TurnContent{
+						claude.TextContent(fmt.Sprintf(`<function_result>
+<stdout>%s</stdout>
+<stderr>%s</stderr>
+<exit_code>%d</exit_code>
+</function_result>`, cmdOut, stderr, errorCode)),
+					},
+				}
+
+				turns = append(turns, toolResp)
+				moreWork = true
 			}
 		}
 	}
@@ -298,4 +374,15 @@ func readlinePrompt() *readline.Instance {
 	l.CaptureExitSignal()
 
 	return l
+}
+
+type FunctionCall struct {
+	XMLName    xml.Name            `xml:"function_call"`
+	Name       string              `xml:"name,attr"`
+	Parameters []FunctionParameter `xml:"parameter"`
+}
+
+type FunctionParameter struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:",chardata"`
 }

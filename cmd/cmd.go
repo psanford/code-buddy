@@ -41,6 +41,7 @@ var rootCmd = &cobra.Command{
 			}
 			defer f.Close()
 			r.DebugLogger = slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			r.DebugLogger.Debug("start debug logger")
 		}
 
 		err := r.Run(ctx)
