@@ -3,6 +3,7 @@ package interactive
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -32,6 +33,8 @@ In this environment, you can invoke tools using a "<function_call>" block like t
 </function_call>
 
 You should not send anything after a function_call so that I can invoke the function for you and return the results to you.
+
+Always base64 encode the $PARAM_VALUE.
 
 The response will be in the form:
 <function_result>
@@ -174,6 +177,8 @@ func (r *Runner) Run(ctx context.Context) error {
 				return err
 			}
 
+			<-waitOnText
+
 			turnContents := make([]claude.TurnContent, 0, len(respMeta.Content))
 
 			var cmd Cmd
@@ -200,7 +205,11 @@ func (r *Runner) Run(ctx context.Context) error {
 
 				paramMap := make(map[string]string)
 				for _, p := range functionCall.Parameters {
-					paramMap[p.Name] = p.Value
+					v, err := base64.StdEncoding.DecodeString(p.Value)
+					if err != nil {
+						return err
+					}
+					paramMap[p.Name] = string(v)
 				}
 
 				switch functionCall.Name {
@@ -240,8 +249,6 @@ func (r *Runner) Run(ctx context.Context) error {
 				Content: turnContents,
 			})
 
-			<-waitOnText
-
 			if cmd != nil {
 				fmt.Printf("\nRequest to run command:\n\n%s\n\n", cmd.PrettyCommand())
 				fmt.Print("ok? (y/N):")
@@ -258,7 +265,9 @@ func (r *Runner) Run(ctx context.Context) error {
 				}
 
 				if !acceptCmd {
-					return fmt.Errorf("Command not accepted, aborting")
+					fmt.Println("Command not accepted, aborting")
+					moreWork = false
+					break
 				}
 
 				var (
