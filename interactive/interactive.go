@@ -98,6 +98,8 @@ func (r *Runner) Run(ctx context.Context) error {
 		project = inferProject()
 		stdin   = bufio.NewReader(os.Stdin)
 		client  = anthropic.NewClient(r.APIKey)
+
+		multiline bool
 	)
 
 	rgOut, err := exec.Command("rg", "--files").CombinedOutput()
@@ -116,27 +118,48 @@ func (r *Runner) Run(ctx context.Context) error {
 	rl := readlinePrompt()
 	defer rl.Close()
 
+OUTER:
 	for {
-		userPrompt, err := rl.Readline()
-		if err == readline.ErrInterrupt {
-			if len(userPrompt) == 0 {
-				break
+		var promptLines []string
+		for i, readMoreLines := 0, true; readMoreLines; i++ {
+			readMoreLines = multiline
+
+			if i == 0 {
+				rl.SetPrompt("prompt> ")
 			} else {
-				continue
+				rl.SetPrompt("prompt» ")
 			}
-		} else if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
+
+			promptLine, err := rl.Readline()
+			if err == readline.ErrInterrupt { // ctrl-c
+				break OUTER
+			} else if err == io.EOF {
+				if multiline {
+					readMoreLines = false
+					break
+				} else {
+					break OUTER
+				}
+			} else if err != nil {
+				return err
+			}
+
+			promptLines = append(promptLines, promptLine)
+			if i == 0 && strings.HasPrefix(promptLine, "/") {
+				break
+			}
 		}
 
-		userPrompt = strings.TrimSpace(userPrompt)
+		userPrompt := strings.TrimSpace(strings.Join(promptLines, "\n"))
 		if strings.HasPrefix(userPrompt, "/") {
 			switch userPrompt {
 			case "/help":
 				helpMsg()
 			case "/reset":
 				turns = []claude.MessageTurn{}
+			case "/multiline":
+				multiline = !multiline
+				fmt.Printf("multiline=%t\n", multiline)
 			case "/history":
 				for _, turn := range turns {
 					fmt.Printf("%+v\n", turn)
@@ -362,6 +385,7 @@ func helpMsg() {
 	fmt.Println(`help
 /help       - show this help message
 /reset      - clear all history and start again
+/multiline  - enable multi-line mode Ctrl-d to send
 /history    - show full conversation history
 /quit       - exit program`)
 }
@@ -380,6 +404,7 @@ func readlinePrompt() *readline.Instance {
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem("/help"),
 		readline.PcItem("/reset"),
+		readline.PcItem("/multiline"),
 		readline.PcItem("/history"),
 		readline.PcItem("/quit"),
 	)
