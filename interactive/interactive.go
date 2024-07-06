@@ -171,7 +171,8 @@ OUTER:
 
 		userPrompt := strings.TrimSpace(strings.Join(promptLines, "\n"))
 		if strings.HasPrefix(userPrompt, "/") {
-			switch userPrompt {
+			cmd := strings.SplitN(userPrompt, " ", 2)[0]
+			switch cmd {
 			case "/help":
 				helpMsg()
 			case "/reset":
@@ -179,6 +180,15 @@ OUTER:
 			case "/multiline":
 				multiline = !multiline
 				fmt.Printf("multiline=%t\n", multiline)
+			case "/model":
+				parts := strings.SplitN(userPrompt, " ", 2)
+				if len(parts) > 1 {
+					modelName := parts[1]
+					fmt.Printf("set model=%s\n", modelName)
+					r.Model = modelName
+				} else {
+					fmt.Printf("model=%s\n", r.Model)
+				}
 			case "/history":
 				for _, turn := range turns {
 					fmt.Printf("%+v\n", turn)
@@ -202,8 +212,13 @@ OUTER:
 
 		stopSeq := commandPrefix + ",invoke"
 
+		model := r.Model
+		if fullModel := humanModelNameMap[model]; fullModel != "" {
+			model = fullModel
+		}
+
 		req := &claude.MessageRequest{
-			Model:         r.Model,
+			Model:         model,
 			Stream:        true,
 			System:        systemPrompt,
 			StopSequences: []string{stopSeq},
@@ -402,11 +417,12 @@ func readUserPrompt(stdin *bufio.Reader) (string, error) {
 
 func helpMsg() {
 	fmt.Println(`help
-/help       - show this help message
-/reset      - clear all history and start again
-/multiline  - enable multi-line mode Ctrl-d to send
-/history    - show full conversation history
-/quit       - exit program`)
+/help          - show this help message
+/reset         - clear all history and start again
+/multiline     - enable multi-line mode Ctrl-d to send
+/model <model> - set model
+/history       - show full conversation history
+/quit          - exit program`)
 }
 
 func readlinePrompt() *readline.Instance {
@@ -424,6 +440,11 @@ func readlinePrompt() *readline.Instance {
 		readline.PcItem("/help"),
 		readline.PcItem("/reset"),
 		readline.PcItem("/multiline"),
+		readline.PcItem("/model",
+			readline.PcItemDynamic(func(line string) []string {
+				return []string{"sonnet", "haiku", "opus"}
+			}),
+		),
 		readline.PcItem("/history"),
 		readline.PcItem("/quit"),
 	)
@@ -469,4 +490,10 @@ func reverseString(input string) string {
 	}
 
 	return string(rune)
+}
+
+var humanModelNameMap = map[string]string{
+	"haiku":  claude.Claude3Haiku,
+	"sonnet": claude.Claude3Dot5Sonnet,
+	"opus":   claude.Claude3Opus,
 }
