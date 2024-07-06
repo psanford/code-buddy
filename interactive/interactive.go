@@ -85,39 +85,54 @@ You should prefer this function to write_file whenever you are making partial up
 `
 
 type Runner struct {
-	APIKey      string
-	Model       string
-	DebugLogger *slog.Logger
+	APIKey               string
+	Model                string
+	OverrideSystemPrompt *string
+	DebugLogger          *slog.Logger
 }
 
 func (r *Runner) Run(ctx context.Context) error {
 
 	var (
-		turns     []claude.MessageTurn
-		multiline bool
+		turns        []claude.MessageTurn
+		multiline    bool
+		systemPrompt string
 
-		rgFiles   = "?"
-		fileCount = -1
-		project   = inferProject()
-		stdin     = bufio.NewReader(os.Stdin)
-		client    = anthropic.NewClient(r.APIKey)
+		project = inferProject()
+		stdin   = bufio.NewReader(os.Stdin)
+		client  = anthropic.NewClient(r.APIKey)
 	)
 
-	if strings.HasSuffix(project, ".git") {
-		rgOut, err := exec.Command("rg", "--files").CombinedOutput()
-		if err != nil {
-			return err
+	if r.OverrideSystemPrompt != nil {
+		systemPrompt = *r.OverrideSystemPrompt
+	} else {
+		var (
+			rgFiles    = "?"
+			fileCountS = "?"
+			fileCount  = -1
+		)
+		if strings.HasSuffix(project, ".git") {
+			rgOut, err := exec.Command("rg", "--files").CombinedOutput()
+			if err != nil {
+				return err
+			}
+			rgFileLines := strings.Split(string(rgOut), "\n")
+			fileCount = len(rgFileLines)
+			if fileCount > 10 {
+				rgFileLines = rgFileLines[:9]
+			}
+			rgFiles = strings.Join(rgFileLines, "\n")
 		}
-		rgFileLines := strings.Split(string(rgOut), "\n")
-		fileCount = len(rgFileLines)
-		if fileCount > 10 {
-			rgFileLines = rgFileLines[:9]
-		}
-		rgFiles = strings.Join(rgFileLines, "\n")
-	}
 
-	funCallReversed := reverseString("function_call")
-	fixedSystemPrompt := strings.ReplaceAll(rawSystemPrompt, "function_call", funCallReversed)
+		funCallReversed := reverseString("function_call")
+		fixedSystemPrompt := strings.ReplaceAll(rawSystemPrompt, "function_call", funCallReversed)
+
+		if fileCount > -1 {
+			fileCountS = strconv.Itoa(fileCount)
+		}
+
+		systemPrompt = fmt.Sprintf(fixedSystemPrompt, project, rgFiles, fileCountS)
+	}
 
 	rl := readlinePrompt()
 	defer rl.Close()
@@ -187,15 +202,10 @@ OUTER:
 
 		stopSeq := commandPrefix + ",invoke"
 
-		fileCountS := "?"
-		if fileCount > -1 {
-			fileCountS = strconv.Itoa(fileCount)
-		}
-
 		req := &claude.MessageRequest{
 			Model:         r.Model,
 			Stream:        true,
-			System:        fmt.Sprintf(fixedSystemPrompt, project, rgFiles, fileCountS),
+			System:        systemPrompt,
 			StopSequences: []string{stopSeq},
 		}
 
