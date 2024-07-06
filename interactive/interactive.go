@@ -28,7 +28,7 @@ Generate all of the relevant information necessary to pass along to another soft
 project=%s
 first 10 files in project:
 %s
-file_count=%d
+file_count=%s
 </context>
 
 In this environment, you can invoke tools using the following syntax:
@@ -93,23 +93,27 @@ type Runner struct {
 func (r *Runner) Run(ctx context.Context) error {
 
 	var (
-		turns []claude.MessageTurn
-
-		project = inferProject()
-		stdin   = bufio.NewReader(os.Stdin)
-		client  = anthropic.NewClient(r.APIKey)
-
+		turns     []claude.MessageTurn
 		multiline bool
+
+		rgFiles   = "?"
+		fileCount = -1
+		project   = inferProject()
+		stdin     = bufio.NewReader(os.Stdin)
+		client    = anthropic.NewClient(r.APIKey)
 	)
 
-	rgOut, err := exec.Command("rg", "--files").CombinedOutput()
-	if err != nil {
-		return err
-	}
-	rgFileLines := strings.Split(string(rgOut), "\n")
-	fileCount := len(rgFileLines)
-	if fileCount > 10 {
-		rgFileLines = rgFileLines[:9]
+	if strings.HasSuffix(project, ".git") {
+		rgOut, err := exec.Command("rg", "--files").CombinedOutput()
+		if err != nil {
+			return err
+		}
+		rgFileLines := strings.Split(string(rgOut), "\n")
+		fileCount = len(rgFileLines)
+		if fileCount > 10 {
+			rgFileLines = rgFileLines[:9]
+		}
+		rgFiles = strings.Join(rgFileLines, "\n")
 	}
 
 	funCallReversed := reverseString("function_call")
@@ -183,10 +187,15 @@ OUTER:
 
 		stopSeq := commandPrefix + ",invoke"
 
+		fileCountS := "?"
+		if fileCount > -1 {
+			fileCountS = strconv.Itoa(fileCount)
+		}
+
 		req := &claude.MessageRequest{
 			Model:         r.Model,
 			Stream:        true,
-			System:        fmt.Sprintf(fixedSystemPrompt, project, rgFileLines, fileCount),
+			System:        fmt.Sprintf(fixedSystemPrompt, project, rgFiles, fileCountS),
 			StopSequences: []string{stopSeq},
 		}
 
