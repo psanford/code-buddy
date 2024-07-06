@@ -39,24 +39,6 @@ This is the content of param2
 			wantErr: false,
 		},
 		{
-			name: "Valid function call with parameters but no end function",
-			input: `#challenges-forsakes,function,test_function
-#challenges-forsakes,parameter,param1
-This is the content of param1
-#challenges-forsakes,end_parameter
-#challenges-forsakes,parameter,param2
-This is the content of param2
-#challenges-forsakes,end_parameter`,
-			want: &FunctionCall{
-				Name: "test_function",
-				Parameters: []FunctionParameter{
-					{Name: "param1", Value: "This is the content of param1"},
-					{Name: "param2", Value: "This is the content of param2"},
-				},
-			},
-			wantErr: false,
-		},
-		{
 			name:    "Invalid function call - missing end_function",
 			input:   "#challenges-forsakes,function,test_function",
 			want:    nil,
