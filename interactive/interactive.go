@@ -103,42 +103,43 @@ func (r *Runner) Run(ctx context.Context) error {
 		client  = anthropic.NewClient(r.APIKey)
 	)
 
-	if r.OverrideSystemPrompt != nil {
-		systemPrompt = *r.OverrideSystemPrompt
-	} else {
-		var (
-			rgFiles    = "?"
-			fileCountS = "?"
-			fileCount  = -1
-		)
-		if strings.HasSuffix(project, ".git") {
-			rgOut, err := exec.Command("rg", "--files").CombinedOutput()
-			if err != nil {
-				return err
-			}
-			rgFileLines := strings.Split(string(rgOut), "\n")
-			fileCount = len(rgFileLines)
-			if fileCount > 10 {
-				rgFileLines = rgFileLines[:9]
-			}
-			rgFiles = strings.Join(rgFileLines, "\n")
-		}
-
-		funCallReversed := reverseString("function_call")
-		fixedSystemPrompt := strings.ReplaceAll(rawSystemPrompt, "function_call", funCallReversed)
-
-		if fileCount > -1 {
-			fileCountS = strconv.Itoa(fileCount)
-		}
-
-		systemPrompt = fmt.Sprintf(fixedSystemPrompt, project, rgFiles, fileCountS)
-	}
-
 	rl := readlinePrompt()
 	defer rl.Close()
 
 OUTER:
 	for {
+
+		if r.OverrideSystemPrompt != nil {
+			systemPrompt = *r.OverrideSystemPrompt
+		} else {
+			var (
+				rgFiles    = "?"
+				fileCountS = "?"
+				fileCount  = -1
+			)
+			if strings.HasSuffix(project, ".git") {
+				rgOut, err := exec.Command("rg", "--files").CombinedOutput()
+				if err != nil {
+					return err
+				}
+				rgFileLines := strings.Split(string(rgOut), "\n")
+				fileCount = len(rgFileLines)
+				if fileCount > 10 {
+					rgFileLines = rgFileLines[:9]
+				}
+				rgFiles = strings.Join(rgFileLines, "\n")
+			}
+
+			funCallReversed := reverseString("function_call")
+			fixedSystemPrompt := strings.ReplaceAll(rawSystemPrompt, "function_call", funCallReversed)
+
+			if fileCount > -1 {
+				fileCountS = strconv.Itoa(fileCount)
+			}
+
+			systemPrompt = fmt.Sprintf(fixedSystemPrompt, project, rgFiles, fileCountS)
+		}
+
 		var promptLines []string
 		for i, readMoreLines := 0, true; readMoreLines; i++ {
 			readMoreLines = multiline
@@ -188,6 +189,23 @@ OUTER:
 					r.Model = modelName
 				} else {
 					fmt.Printf("model=%s\n", r.Model)
+				}
+			case "/system":
+				newSystemPrompt := strings.TrimSpace(strings.TrimPrefix(userPrompt, "/system"))
+				if newSystemPrompt != "" {
+					if newSystemPrompt == "RESET" {
+						r.OverrideSystemPrompt = nil
+						fmt.Println("reset system prompt back to default")
+					} else {
+						r.OverrideSystemPrompt = &newSystemPrompt
+						fmt.Printf("set system_prompt=%s\n", newSystemPrompt)
+					}
+				} else {
+					if r.OverrideSystemPrompt != nil {
+						fmt.Printf("system_prompt=%s\n", *r.OverrideSystemPrompt)
+					} else {
+						fmt.Printf("system_prompt=%s\n", systemPrompt)
+					}
 				}
 			case "/history":
 				for _, turn := range turns {
@@ -417,12 +435,13 @@ func readUserPrompt(stdin *bufio.Reader) (string, error) {
 
 func helpMsg() {
 	fmt.Println(`help
-/help          - show this help message
-/reset         - clear all history and start again
-/multiline     - enable multi-line mode Ctrl-d to send
-/model <model> - set model
-/history       - show full conversation history
-/quit          - exit program`)
+/help							- show this help message
+/reset						- clear all history and start again
+/multiline				- enable multi-line mode Ctrl-d to send
+/model <model>		- get/set model
+/system <prompt>	- get/set system prompt (RESET to reset)
+/history					- show full conversation history
+/quit							- exit program`)
 }
 
 func readlinePrompt() *readline.Instance {
@@ -445,6 +464,7 @@ func readlinePrompt() *readline.Instance {
 				return []string{"sonnet", "haiku", "opus"}
 			}),
 		),
+		readline.PcItem("/system"),
 		readline.PcItem("/history"),
 		readline.PcItem("/quit"),
 	)
