@@ -56,6 +56,12 @@ The available functions that you can invoke this way are:
 <description>Modify the full contents of a file. You MUST provide the full contents of the file!</description>
 </function>
 
+<function name="append_to_file">
+<parameter name="filename"/>
+<parameter name="content"/>
+<description>Append content to the end of a file.</description>
+</function>
+
 <function name="replace_string_in_file">
 <parameter name="filename"/>
 <parameter name="original_string"/>
@@ -318,6 +324,11 @@ OUTER:
 					}
 				case "write_file":
 					cmd = &ModifyFileArgs{
+						Filename: paramMap["filename"],
+						Content:  paramMap["content"],
+					}
+				case "append_to_file":
+					cmd = &AppendToFileArgs{
 						Filename: paramMap["filename"],
 						Content:  paramMap["content"],
 					}

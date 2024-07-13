@@ -100,6 +100,28 @@ func (a *ModifyFileArgs) PrettyCommand() string {
 	return fmt.Sprintf("cat > %s <<-EOF\n%s\n\nEOF\n# destination: %s", a.Filename, a.Content, a.Filename)
 }
 
+type AppendToFileArgs struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+}
+
+func (a *AppendToFileArgs) Run() (string, error) {
+	f, err := os.OpenFile(a.Filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	_, err = f.Write([]byte(a.Content))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("File %s has been modified successfully.", a.Filename), nil
+}
+
+func (a *AppendToFileArgs) PrettyCommand() string {
+	return fmt.Sprintf("cat >> %s <<-EOF\n%s\n\nEOF\n# destination: %s", a.Filename, a.Content, a.Filename)
+}
+
 type ReplaceStringInFileArgs struct {
 	Filename       string
 	OriginalString string
