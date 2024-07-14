@@ -3,6 +3,7 @@ package interactive
 import (
 	"bytes"
 	"text/template"
+	"time"
 )
 
 type SystemPromptBuilder struct {
@@ -10,13 +11,29 @@ type SystemPromptBuilder struct {
 	FileCount           int
 	FirstFilesInProject []string
 	FunctionCallPrefix  string
+	FilesContent        []FileContent
+	Date                string
 }
 
-func newSystemPromptBuilder() *SystemPromptBuilder {
+type FileContent struct {
+	FileName string
+	Content  string
+}
+
+func newSystemPromptBuilder(project string) *SystemPromptBuilder {
 	return &SystemPromptBuilder{
+		Project:            project,
 		FileCount:          -1,
 		FunctionCallPrefix: reverseString("function_call"),
+		Date:               time.Now().Format("2006-01-02"),
 	}
+}
+
+func (b *SystemPromptBuilder) IncludeProjectContext() bool {
+	return len(b.FilesContent) == 0
+}
+func (b *SystemPromptBuilder) IncludeFSTools() bool {
+	return len(b.FilesContent) == 0
 }
 
 func (b *SystemPromptBuilder) String() string {
@@ -28,25 +45,30 @@ func (b *SystemPromptBuilder) String() string {
 	return buf.String()
 }
 
-var systemPromptTemplate = template.Must(template.New("").Parse(`Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
+var systemPromptTemplate = template.Must(template.New("").Parse(`You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+
+ Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
 
 Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
 
+{{if .IncludeProjectContext}}
 <context>
-{{if not (eq .Project "")}}
+{{- if not (eq .Project "")}}
 project={{.Project}}
-{{end}}
+{{- end}}
 {{if gt (len .FirstFilesInProject) 0}}
 first 10 files in project:
-{{range .FirstFilesInProject}}
+{{range .FirstFilesInProject -}}
 {{.}}
 {{end}}
-{{end}}
-{{if gt .FileCount -1}}
+{{- end}}
+{{if gt .FileCount -1 -}}
 file_count={{.FileCount}}
-{{end}}
+{{end -}}
 </context>
+{{end}}
 
+{{if .IncludeFSTools}}
 In this environment, you can invoke tools using the following syntax:
 #{{.FunctionCallPrefix}},function,$FUNCTION_NAME
 #{{.FunctionCallPrefix}},parameter,$PARAM_NAME
@@ -99,11 +121,19 @@ You should prefer this function to write_file whenever you are making partial up
 <description>rg (ripgrep) is a tool for recursively searching for lines matching a regex pattern.</description>
 </function>
 
-
 <function name="cat">
 <parameter name="filename"/>
 <description>Read the contents of a file</description>
 </function>
+{{end}}
+{{- range .FilesContent}}
+<file>
+<filename>{{.FileName}}</filename>
+<filecontent>{{.Content}}</filecontent>
+</file>
+{{end -}}
+
+Today's date is {{.Date}}
 `))
 
 func reverseString(input string) string {

@@ -23,6 +23,7 @@ type Runner struct {
 	Model                string
 	OverrideSystemPrompt *string
 	DebugLogger          *slog.Logger
+	SystemPromptFiles    []string
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -31,11 +32,26 @@ func (r *Runner) Run(ctx context.Context) error {
 		turns        []claude.MessageTurn
 		multiline    bool
 		systemPrompt string
+		filesContent []FileContent
 
 		project = inferProject()
 		stdin   = bufio.NewReader(os.Stdin)
 		client  = anthropic.NewClient(r.APIKey)
 	)
+
+	if len(r.SystemPromptFiles) > 0 {
+		for _, filename := range r.SystemPromptFiles {
+			content, err := os.ReadFile(filename)
+			if err != nil {
+				return fmt.Errorf("read %s err: %w", filename, err)
+			}
+			filesContent = append(filesContent, FileContent{
+				FileName: filename,
+				Content:  string(content),
+			})
+		}
+
+	}
 
 	rl := readlinePrompt()
 	defer rl.Close()
@@ -47,7 +63,7 @@ OUTER:
 			systemPrompt = *r.OverrideSystemPrompt
 		} else {
 
-			promptBuilder := newSystemPromptBuilder()
+			promptBuilder := newSystemPromptBuilder(project)
 			if strings.HasSuffix(project, ".git") {
 				rgOut, err := exec.Command("rg", "--files").CombinedOutput()
 				if err != nil {
@@ -62,6 +78,9 @@ OUTER:
 				promptBuilder.FirstFilesInProject = rgFileLines
 			}
 
+			promptBuilder.FilesContent = filesContent
+
+			systemPrompt = promptBuilder.String()
 		}
 
 		var promptLines []string
@@ -338,7 +357,7 @@ type Cmd interface {
 func inferProject() string {
 	out, err := exec.Command("git", "remote", "get-url", "origin").CombinedOutput()
 	if err == nil {
-		return string(out)
+		return strings.TrimSpace(string(out))
 	}
 	cwd, _ := os.Getwd()
 	return cwd

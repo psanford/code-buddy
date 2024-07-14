@@ -20,6 +20,7 @@ var (
 	modelFlag    string
 	debugLog     string
 	systemPrompt string
+	files        []string
 )
 var rootCmd = &cobra.Command{
 	Use:   "code-buddy",
@@ -64,6 +65,10 @@ var rootCmd = &cobra.Command{
 			r.OverrideSystemPrompt = &systemPrompt
 		}
 
+		if len(files) > 0 {
+			r.SystemPromptFiles = files
+		}
+
 		if debugLog != "" {
 			f, err := os.OpenFile(debugLog, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 			if err != nil {
@@ -86,6 +91,7 @@ func Execute() error {
 	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, fmt.Sprintf("model name (%s)", strings.Join(models, ",")))
 	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
 	rootCmd.Flags().StringVar(&systemPrompt, "system-prompt", "", "Override code-buddy's default system prompt with your own")
+	rootCmd.Flags().StringArrayVar(&files, "file", nil, "Include file(s) in context")
 
 	return rootCmd.Execute()
 }
