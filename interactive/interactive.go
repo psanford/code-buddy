@@ -46,32 +46,22 @@ OUTER:
 		if r.OverrideSystemPrompt != nil {
 			systemPrompt = *r.OverrideSystemPrompt
 		} else {
-			var (
-				rgFiles    = "?"
-				fileCountS = "?"
-				fileCount  = -1
-			)
+
+			promptBuilder := newSystemPromptBuilder()
 			if strings.HasSuffix(project, ".git") {
 				rgOut, err := exec.Command("rg", "--files").CombinedOutput()
 				if err != nil {
 					return err
 				}
 				rgFileLines := strings.Split(string(rgOut), "\n")
-				fileCount = len(rgFileLines)
-				if fileCount > 10 {
+				promptBuilder.FileCount = len(rgFileLines)
+				if promptBuilder.FileCount > 10 {
 					rgFileLines = rgFileLines[:9]
 				}
-				rgFiles = strings.Join(rgFileLines, "\n")
+
+				promptBuilder.FirstFilesInProject = rgFileLines
 			}
 
-			funCallReversed := reverseString("function_call")
-			fixedSystemPrompt := strings.ReplaceAll(rawSystemPrompt, "function_call", funCallReversed)
-
-			if fileCount > -1 {
-				fileCountS = strconv.Itoa(fileCount)
-			}
-
-			systemPrompt = fmt.Sprintf(fixedSystemPrompt, project, rgFiles, fileCountS)
 		}
 
 		var promptLines []string
@@ -432,23 +422,6 @@ type FunctionCall struct {
 type FunctionParameter struct {
 	Name  string
 	Value string
-}
-
-func reverseString(input string) string {
-	rune := make([]rune, len(input))
-
-	var n int
-	for _, r := range input {
-		rune[n] = r
-		n++
-	}
-	rune = rune[0:n]
-
-	for i := 0; i < n/2; i++ {
-		rune[i], rune[n-1-i] = rune[n-1-i], rune[i]
-	}
-
-	return string(rune)
 }
 
 var humanModelNameMap = map[string]string{

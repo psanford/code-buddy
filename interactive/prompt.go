@@ -1,27 +1,61 @@
 package interactive
 
-var rawSystemPrompt = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+import (
+	"bytes"
+	"text/template"
+)
 
-Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
+type SystemPromptBuilder struct {
+	Project             string
+	FileCount           int
+	FirstFilesInProject []string
+	FunctionCallPrefix  string
+}
+
+func newSystemPromptBuilder() *SystemPromptBuilder {
+	return &SystemPromptBuilder{
+		FileCount:          -1,
+		FunctionCallPrefix: reverseString("function_call"),
+	}
+}
+
+func (b *SystemPromptBuilder) String() string {
+	var buf bytes.Buffer
+	err := systemPromptTemplate.Execute(&buf, b)
+	if err != nil {
+		panic(err)
+	}
+	return buf.String()
+}
+
+var systemPromptTemplate = template.Must(template.New("").Parse(`Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
 
 Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
 
 <context>
-project=%s
+{{if not (eq .Project "")}}
+project={{.Project}}
+{{end}}
+{{if gt (len .FirstFilesInProject) 0}}
 first 10 files in project:
-%s
-file_count=%s
+{{range .FirstFilesInProject}}
+{{.}}
+{{end}}
+{{end}}
+{{if gt .FileCount -1}}
+file_count={{.FileCount}}
+{{end}}
 </context>
 
 In this environment, you can invoke tools using the following syntax:
-#function_call,function,$FUNCTION_NAME
-#function_call,parameter,$PARAM_NAME
+#{{.FunctionCallPrefix}},function,$FUNCTION_NAME
+#{{.FunctionCallPrefix}},parameter,$PARAM_NAME
 $PARAM_VALUE
-#function_call,end_parameter
-#function_call,end_function
-#function_call,invoke
+#{{.FunctionCallPrefix}},end_parameter
+#{{.FunctionCallPrefix}},end_function
+#{{.FunctionCallPrefix}},invoke
 
-Each #function_call directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you.
+Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you.
 
 The response will be in the form:
 <function_result>
@@ -70,4 +104,21 @@ You should prefer this function to write_file whenever you are making partial up
 <parameter name="filename"/>
 <description>Read the contents of a file</description>
 </function>
-`
+`))
+
+func reverseString(input string) string {
+	rune := make([]rune, len(input))
+
+	var n int
+	for _, r := range input {
+		rune[n] = r
+		n++
+	}
+	rune = rune[0:n]
+
+	for i := 0; i < n/2; i++ {
+		rune[i], rune[n-1-i] = rune[n-1-i], rune[i]
+	}
+
+	return string(rune)
+}
