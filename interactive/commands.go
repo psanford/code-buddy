@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 type ListFilesArgs struct {
@@ -135,14 +136,50 @@ func (a *ReplaceStringInFileArgs) Run() (string, error) {
 		return "", err
 	}
 
-	rep := strings.Replace(string(content), a.OriginalString, a.NewString, a.Count)
+	actualCount, rep := replaceStringCount(string(content), a.OriginalString, a.NewString, a.Count)
 	err = os.WriteFile(a.Filename, []byte(rep), 0644)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("File %s has been modified successfully.", a.Filename), nil
+	return fmt.Sprintf("Replaced string in file %s %d times.", a.Filename, actualCount), nil
 }
 
 func (a *ReplaceStringInFileArgs) PrettyCommand() string {
 	return fmt.Sprintf("# replace string in file %s (count %d)\n==== old ====\n%s\n==== new ====%s\n====     ====\n# in %s", a.Filename, a.Count, a.OriginalString, a.NewString, a.Filename)
+}
+
+func replaceStringCount(s, old, new string, n int) (int, string) {
+	if old == new || n == 0 {
+		return 0, s // avoid allocation
+	}
+
+	// Compute number of replacements.
+	if m := strings.Count(s, old); m == 0 {
+		return 0, s // avoid allocation
+	} else if n < 0 || m < n {
+		n = m
+	}
+
+	// Apply replacements to buffer.
+	var replacementCount int
+	var b strings.Builder
+	b.Grow(len(s) + n*(len(new)-len(old)))
+	start := 0
+	for i := 0; i < n; i++ {
+		j := start
+		if len(old) == 0 {
+			if i > 0 {
+				_, wid := utf8.DecodeRuneInString(s[start:])
+				j += wid
+			}
+		} else {
+			j += strings.Index(s[start:], old)
+		}
+		b.WriteString(s[start:j])
+		b.WriteString(new)
+		start = j + len(old)
+		replacementCount++
+	}
+	b.WriteString(s[start:])
+	return replacementCount, b.String()
 }
