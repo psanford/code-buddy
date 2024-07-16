@@ -77,7 +77,7 @@ $PARAM_VALUE
 #{{.FunctionCallPrefix}},end_function
 #{{.FunctionCallPrefix}},invoke
 
-Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you.
+Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you. You must provide the invoke line for me to call the function.
 
 The response will be in the form:
 <function_result>
@@ -132,6 +132,10 @@ You should prefer this function to write_file whenever you are making partial up
 <filecontent>{{.Content}}</filecontent>
 </file>
 {{end -}}
+
+<additional rules>
+Files should aways end with a trailing newline.
+</additional rules>
 
 Today's date is {{.Date}}
 `))
