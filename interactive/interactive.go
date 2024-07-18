@@ -178,10 +178,16 @@ OUTER:
 			model = fullModel
 		}
 
+		maxTokens := 0
+		if model == claude.Claude3Dot5Sonnet {
+			maxTokens = 8192
+		}
+
 		req := &claude.MessageRequest{
 			Model:         model,
 			Stream:        true,
 			System:        systemPrompt,
+			MaxTokens:     maxTokens,
 			StopSequences: []string{stopSeq},
 		}
 
