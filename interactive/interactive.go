@@ -29,14 +29,14 @@ type Runner struct {
 func (r *Runner) Run(ctx context.Context) error {
 
 	var (
-		turns        []claude.MessageTurn
+		turns        []turnContent
 		multiline    bool
 		systemPrompt string
 		filesContent []FileContent
 
 		project = inferProject()
 		stdin   = bufio.NewReader(os.Stdin)
-		client  = anthropic.NewClient(r.APIKey)
+		client  = anthropic.NewClient(r.APIKey, anthropic.WithDebugLogger(r.DebugLogger))
 	)
 
 	if len(r.SystemPromptFiles) > 0 {
@@ -120,7 +120,7 @@ OUTER:
 			case "/help":
 				helpMsg()
 			case "/reset":
-				turns = []claude.MessageTurn{}
+				turns = []turnContent{}
 			case "/multiline":
 				multiline = !multiline
 				fmt.Printf("multiline=%t\n", multiline)
@@ -152,8 +152,23 @@ OUTER:
 				}
 			case "/history":
 				for _, turn := range turns {
-					fmt.Printf("%+v\n", turn)
+					if turn.InputTokens > 0 {
+						fmt.Printf("%s: (input_tokens: %d output_tokens: %d)\n", turn.Role, turn.InputTokens, turn.OutputTokens)
+					} else {
+						fmt.Printf("%s:\n", turn.Role)
+					}
+					for _, content := range turn.Content {
+						fmt.Printf("  %s\n", content.TextContent())
+					}
 				}
+			case "/info":
+				fmt.Printf("Model: %s\n", r.Model)
+				fmt.Printf("Turns: %d\n", len(turns))
+				if len(turns) > 0 {
+					lastTurn := turns[len(turns)-1]
+					fmt.Printf("Tokens: %d\n", lastTurn.InputTokens+lastTurn.OutputTokens)
+				}
+
 			case "/quit":
 				return nil
 			default:
@@ -164,10 +179,12 @@ OUTER:
 			continue
 		}
 
-		turns = append(turns, claude.MessageTurn{
-			Role: "user",
-			Content: []claude.TurnContent{
-				claude.TextContent(userPrompt),
+		turns = append(turns, turnContent{
+			MessageTurn: claude.MessageTurn{
+				Role: "user",
+				Content: []claude.TurnContent{
+					claude.TextContent(userPrompt),
+				},
 			},
 		})
 
@@ -215,7 +232,11 @@ OUTER:
 				}
 			}()
 
-			req.Messages = turns
+			ts := make([]claude.MessageTurn, len(turns))
+			for i, t := range turns {
+				ts[i] = t.MessageTurn
+			}
+			req.Messages = ts
 
 			respMeta, err := acc.Complete(ctx, req, accumulator.WithContentBlockDeltaChan(cbCh))
 			if err != nil {
@@ -288,9 +309,13 @@ OUTER:
 				}
 			}
 
-			turns = append(turns, claude.MessageTurn{
-				Role:    "assistant",
-				Content: turnContents,
+			turns = append(turns, turnContent{
+				MessageTurn: claude.MessageTurn{
+					Role:    "assistant",
+					Content: turnContents,
+				},
+				InputTokens:  respMeta.Usage.InputTokens,
+				OutputTokens: respMeta.Usage.OutputTokens,
 			})
 
 			if cmd != nil {
@@ -327,14 +352,16 @@ OUTER:
 
 				fmt.Printf("\nOutput: %s\n\n", cmdOut)
 
-				toolResp := claude.MessageTurn{
-					Role: "user",
-					Content: []claude.TurnContent{
-						claude.TextContent(fmt.Sprintf(`<function_result>
+				toolResp := turnContent{
+					MessageTurn: claude.MessageTurn{
+						Role: "user",
+						Content: []claude.TurnContent{
+							claude.TextContent(fmt.Sprintf(`<function_result>
 <stdout>%s</stdout>
 <stderr>%s</stderr>
 <exit_code>%d</exit_code>
 </function_result>`, cmdOut, stderr, errorCode)),
+						},
 					},
 				}
 
@@ -395,6 +422,7 @@ func helpMsg() {
 /model <model>		- get/set model
 /system <prompt>	- get/set system prompt (RESET to reset)
 /history					- show full conversation history
+/info             - show summary info about conversation
 /quit							- exit program`)
 }
 
@@ -420,6 +448,7 @@ func readlinePrompt() *readline.Instance {
 		),
 		readline.PcItem("/system"),
 		readline.PcItem("/history"),
+		readline.PcItem("/info"),
 		readline.PcItem("/quit"),
 	)
 
@@ -453,4 +482,10 @@ var humanModelNameMap = map[string]string{
 	"haiku":  claude.Claude3Haiku,
 	"sonnet": claude.Claude3Dot5Sonnet,
 	"opus":   claude.Claude3Opus,
+}
+
+type turnContent struct {
+	claude.MessageTurn
+	InputTokens  int
+	OutputTokens int
 }
