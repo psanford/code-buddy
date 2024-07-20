@@ -56,8 +56,9 @@ var rootCmd = &cobra.Command{
 		}
 
 		r := interactive.Runner{
-			APIKey: apiKey,
-			Model:  modelFlag,
+			APIKey:        apiKey,
+			Model:         modelFlag,
+			CustomPrompts: conf.CustomPrompts,
 		}
 
 		if cmd.Flags().Changed("system-prompt") {

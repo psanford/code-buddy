@@ -13,6 +13,8 @@ type SystemPromptBuilder struct {
 	FunctionCallPrefix  string
 	FilesContent        []FileContent
 	Date                string
+
+	Template *template.Template
 }
 
 type FileContent struct {
@@ -20,12 +22,22 @@ type FileContent struct {
 	Content  string
 }
 
-func newSystemPromptBuilder(project string) *SystemPromptBuilder {
+func newSystemPromptBuilder(project, customTemplateText string) *SystemPromptBuilder {
+	tmpl := template.Must(template.New("").Parse(genericTemplate))
+	template.Must(tmpl.New("file_contents").Parse(fileContentsTmpl))
+
+	if customTemplateText != "" {
+		template.Must(tmpl.New("custom_template").Parse(customTemplateText))
+	} else {
+		template.Must(tmpl.New("custom_template").Parse(systemPromptTemplate))
+	}
+
 	return &SystemPromptBuilder{
 		Project:            project,
 		FileCount:          -1,
 		FunctionCallPrefix: reverseString("function_call"),
 		Date:               time.Now().Format("2006-01-02"),
+		Template:           tmpl,
 	}
 }
 
@@ -38,14 +50,20 @@ func (b *SystemPromptBuilder) IncludeFSTools() bool {
 
 func (b *SystemPromptBuilder) String() string {
 	var buf bytes.Buffer
-	err := systemPromptTemplate.Execute(&buf, b)
+	err := b.Template.Execute(&buf, b)
 	if err != nil {
 		panic(err)
 	}
 	return buf.String()
 }
 
-var systemPromptTemplate = template.Must(template.New("").Parse(`You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+var genericTemplate = `
+{{template "custom_template" .}}
+{{template "file_contents" .}}
+Today's date is {{.Date}}
+`
+
+var systemPromptTemplate = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
 
  Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
 
@@ -126,19 +144,19 @@ You should prefer this function to write_file whenever you are making partial up
 <description>Read the contents of a file</description>
 </function>
 {{end}}
-{{- range .FilesContent}}
+
+<additional rules>
+Files should aways end with a trailing newline.
+</additional rules>
+`
+
+var fileContentsTmpl = `{{- range .FilesContent}}
 <file>
 <filename>{{.FileName}}</filename>
 <filecontent>{{.Content}}</filecontent>
 </file>
 {{end -}}
-
-<additional rules>
-Files should aways end with a trailing newline.
-</additional rules>
-
-Today's date is {{.Date}}
-`))
+`
 
 func reverseString(input string) string {
 	rune := make([]rune, len(input))

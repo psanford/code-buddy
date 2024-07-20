@@ -9,7 +9,13 @@ import (
 )
 
 type Config struct {
-	AnthropicApiKey string `toml:"anthropic_api_key"`
+	AnthropicApiKey string         `toml:"anthropic_api_key"`
+	CustomPrompts   []CustomPrompt `toml:"custom_prompt"`
+}
+
+type CustomPrompt struct {
+	Name   string `toml:"name"`
+	Prompt string `toml:"prompt"`
 }
 
 var NoConfigErr = errors.New("no config")

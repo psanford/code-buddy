@@ -16,6 +16,7 @@ import (
 	"github.com/psanford/claude"
 	"github.com/psanford/claude/anthropic"
 	"github.com/psanford/code-buddy/accumulator"
+	"github.com/psanford/code-buddy/config"
 )
 
 type Runner struct {
@@ -24,6 +25,7 @@ type Runner struct {
 	OverrideSystemPrompt *string
 	DebugLogger          *slog.Logger
 	SystemPromptFiles    []string
+	CustomPrompts        []config.CustomPrompt
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -63,7 +65,7 @@ OUTER:
 			systemPrompt = *r.OverrideSystemPrompt
 		} else {
 
-			promptBuilder := newSystemPromptBuilder(project)
+			promptBuilder := newSystemPromptBuilder(project, "")
 			if strings.HasSuffix(project, ".git") {
 				rgOut, err := exec.Command("rg", "--files").CombinedOutput()
 				if err != nil {
@@ -136,12 +138,32 @@ OUTER:
 			case "/system":
 				newSystemPrompt := strings.TrimSpace(strings.TrimPrefix(userPrompt, "/system"))
 				if newSystemPrompt != "" {
-					if newSystemPrompt == "RESET" {
+					if newSystemPrompt == "LIST" {
+						for _, customPrompt := range r.CustomPrompts {
+							fmt.Printf("%s\n%s\n\n", customPrompt.Name, customPrompt.Prompt)
+						}
+					} else if newSystemPrompt == "RESET" {
 						r.OverrideSystemPrompt = nil
 						fmt.Println("reset system prompt back to default")
 					} else {
-						r.OverrideSystemPrompt = &newSystemPrompt
-						fmt.Printf("set system_prompt=%s\n", newSystemPrompt)
+						var matchCustomPrompt bool
+						for _, customPrompt := range r.CustomPrompts {
+							if customPrompt.Name == newSystemPrompt {
+								matchCustomPrompt = true
+								promptBuilder := newSystemPromptBuilder("", customPrompt.Prompt)
+								promptBuilder.FilesContent = filesContent
+
+								systemPrompt := promptBuilder.String()
+								fmt.Printf("set system_prompt=%s\n", systemPrompt)
+								r.OverrideSystemPrompt = &systemPrompt
+								break
+							}
+						}
+
+						if !matchCustomPrompt {
+							r.OverrideSystemPrompt = &newSystemPrompt
+							fmt.Printf("set system_prompt=%s\n", newSystemPrompt)
+						}
 					}
 				} else {
 					if r.OverrideSystemPrompt != nil {
@@ -420,7 +442,7 @@ func helpMsg() {
 /reset						- clear all history and start again
 /multiline				- enable multi-line mode Ctrl-d to send
 /model <model>		- get/set model
-/system <prompt>	- get/set system prompt (RESET to reset)
+/system <prompt>	- get/set system prompt (RESET to reset, LIST to list custom prompts, <custom_prompt_name> to use custom prompt, <prompt> to use prompt text)
 /history					- show full conversation history
 /info             - show summary info about conversation
 /quit							- exit program`)
