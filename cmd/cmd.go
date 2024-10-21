@@ -55,6 +55,10 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
+		if modelFlag == "" {
+			modelFlag = conf.Model
+		}
+
 		r := interactive.Runner{
 			APIKey:        apiKey,
 			Model:         modelFlag,

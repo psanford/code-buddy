@@ -11,6 +11,7 @@ import (
 type Config struct {
 	AnthropicApiKey string         `toml:"anthropic_api_key"`
 	CustomPrompts   []CustomPrompt `toml:"custom_prompt"`
+	Model           string         `toml:"model"` // default model to use
 }
 
 type CustomPrompt struct {
