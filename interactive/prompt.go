@@ -95,7 +95,7 @@ $PARAM_VALUE
 #{{.FunctionCallPrefix}},end_function
 #{{.FunctionCallPrefix}},invoke
 
-Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you. You must provide the invoke line for me to call the function.
+Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you. You must include all fields in each line. The only values you should change are the fields that start with '$'. You must provide the invoke line for me to call the function.
 
 The response will be in the form:
 <function_result>
