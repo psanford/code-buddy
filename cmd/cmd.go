@@ -63,8 +63,10 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		if modelFlag == "" {
+		if modelFlag == "" && conf.Model != "" {
 			modelFlag = conf.Model
+		} else if modelFlag == "" {
+			modelFlag = claude.Claude3Dot5SonnetLatest
 		}
 
 		r := interactive.Runner{
@@ -101,7 +103,7 @@ var rootCmd = &cobra.Command{
 
 func Execute() error {
 	models := claude.CurrentModels()
-	rootCmd.Flags().StringVar(&modelFlag, "model", claude.Claude3Dot5Sonnet, fmt.Sprintf("model name (%s)", strings.Join(models, ",")))
+	rootCmd.Flags().StringVar(&modelFlag, "model", "", fmt.Sprintf("model name (%s)", strings.Join(models, ",")))
 	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
 	rootCmd.Flags().StringVar(&systemPrompt, "system-prompt", "", "Override code-buddy's default system prompt with your own")
 	rootCmd.Flags().StringArrayVar(&files, "file", nil, "Include file(s) in context")
