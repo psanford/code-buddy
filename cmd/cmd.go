@@ -20,6 +20,7 @@ var (
 	modelFlag    string
 	debugLog     string
 	systemPrompt string
+	listModels   bool
 	files        []string
 )
 var rootCmd = &cobra.Command{
@@ -38,6 +39,13 @@ var rootCmd = &cobra.Command{
 			log.Println("got signal:", s)
 			cancel()
 		}()
+
+		if listModels {
+			for _, model := range claude.Models() {
+				fmt.Println(model)
+			}
+			os.Exit(0)
+		}
 
 		var apiKey string
 
@@ -97,6 +105,7 @@ func Execute() error {
 	rootCmd.Flags().StringVar(&debugLog, "debug-log", "", "Path to write debug log")
 	rootCmd.Flags().StringVar(&systemPrompt, "system-prompt", "", "Override code-buddy's default system prompt with your own")
 	rootCmd.Flags().StringArrayVar(&files, "file", nil, "Include file(s) in context")
+	rootCmd.Flags().BoolVar(&listModels, "list-models", false, "List known models")
 
 	return rootCmd.Execute()
 }

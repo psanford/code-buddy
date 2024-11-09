@@ -501,8 +501,8 @@ type FunctionParameter struct {
 }
 
 var humanModelNameMap = map[string]string{
-	"haiku":  claude.Claude3Haiku,
-	"sonnet": claude.Claude3Dot5Sonnet,
+	"haiku":  claude.Claude3HaikuLatest,
+	"sonnet": claude.Claude3Dot5SonnetLatest,
 	"opus":   claude.Claude3Opus,
 }
 
