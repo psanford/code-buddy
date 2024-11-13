@@ -95,7 +95,9 @@ $PARAM_VALUE
 #{{.FunctionCallPrefix}},end_function
 #{{.FunctionCallPrefix}},invoke
 
-Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you. You must include all fields in each line. The only values you should change are the fields that start with '$'. You must provide the invoke line for me to call the function.
+Each #{{.FunctionCallPrefix}} directive must be at the start of a new line. You should stop after each function call invokation to allow me to run the function and return the results to you. You must include all fields in each line. The only values you should change are the fields that start with '$'. You must terminate each parameter with the end_parameter, as well as the function with end_function. You must provide the '#{{.FunctionCallPrefix}},invoke' line to call the function.
+
+You must provide the '#{{.FunctionCallPrefix}},invoke' line to call the function!
 
 The response will be in the form:
 <function_result>
@@ -143,6 +145,37 @@ You should prefer this function to write_file whenever you are making partial up
 <parameter name="filename"/>
 <description>Read the contents of a file</description>
 </function>
+
+IMPORTANT: When calling functions, you must follow this exact format:
+
+1. Each directive must start with #{{.FunctionCallPrefix}} at the beginning of a new line
+2. Every parameter must be terminated with end_parameter
+3. The function must be terminated with end_function
+4. End with invoke to execute
+
+Example of correct format:
+#{{.FunctionCallPrefix}},function,write_file
+#{{.FunctionCallPrefix}},parameter,filename
+example.txt
+#{{.FunctionCallPrefix}},end_parameter
+#{{.FunctionCallPrefix}},parameter,content
+Hello World
+#{{.FunctionCallPrefix}},end_parameter
+#{{.FunctionCallPrefix}},end_function
+#{{.FunctionCallPrefix}},invoke
+
+Common mistakes to avoid:
+❌ Missing end_parameter after each parameter
+❌ Missing newlines between directives
+❌ Incorrect order of directives
+❌ Missing invoke at the end
+
+The following validation rules must be followed:
+1. Each parameter must have both its declaration and end_parameter.
+1.5 Seriously, pay attention to this! Every single parameter must an end_parameter line or you will fail!
+2. The function must have end_function
+3. Must end with invoke
+4. All directives must be properly aligned at the start of a line
 {{end}}
 
 <additional rules>
