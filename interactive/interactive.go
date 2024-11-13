@@ -272,17 +272,19 @@ OUTER:
 			var cmd Cmd
 
 			for _, content := range respMeta.Content {
-				turnContents = append(turnContents, content)
 				blk := content.(*accumulator.ContentBlock)
 				if r.DebugLogger != nil && r.DebugLogger.Enabled(ctx, slog.LevelDebug) {
 					r.DebugLogger.Debug("content_block", "blk", blk)
 				}
 
 				if blk.Type() != "text" {
+					turnContents = append(turnContents, content)
 					continue
 				}
 
-				functionCall, err := parseCommand(blk.Text)
+				functionCall, contentUntilFirstFunCall, err := parseCommand(blk.Text)
+				turnContents = append(turnContents, claude.TextContent(contentUntilFirstFunCall))
+
 				if err == io.EOF {
 					continue
 				} else if err != nil {

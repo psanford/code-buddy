@@ -119,15 +119,27 @@ func (c *cmdParser) Parse() (*FunctionCall, error) {
 		Name:       funName,
 		Parameters: params,
 	}
+
 	return &fc, nil
 }
 
-func parseCommand(text string) (*FunctionCall, error) {
+func parseCommand(text string) (*FunctionCall, string, error) {
+	funcEndTxt := commandPrefix + ",end_function"
+	endIdx := strings.Index(text, funcEndTxt)
+
+	if endIdx < 0 {
+		return nil, text, io.EOF
+	}
+
 	scanner := bufio.NewScanner(bytes.NewBufferString(text))
 
 	p := &cmdParser{
 		scanner: scanner,
 	}
 
-	return p.Parse()
+	fc, err := p.Parse()
+
+	fixedText := text[:endIdx+len(funcEndTxt)] + "\n" + commandPrefix + ",invoke\n"
+
+	return fc, fixedText, err
 }
