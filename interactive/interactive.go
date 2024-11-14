@@ -26,6 +26,7 @@ type Runner struct {
 	DebugLogger          *slog.Logger
 	SystemPromptFiles    []string
 	CustomPrompts        []config.CustomPrompt
+	PunMode              bool
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -66,6 +67,7 @@ OUTER:
 		} else {
 
 			promptBuilder := newSystemPromptBuilder(project, "")
+			promptBuilder.PunMode = r.PunMode
 			if strings.HasSuffix(project, ".git") {
 				rgOut, err := exec.Command("rg", "--files").CombinedOutput()
 				if err != nil {

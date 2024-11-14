@@ -22,6 +22,7 @@ var (
 	systemPrompt string
 	listModels   bool
 	files        []string
+	punFlag      bool
 )
 var rootCmd = &cobra.Command{
 	Use:   "code-buddy",
@@ -73,6 +74,7 @@ var rootCmd = &cobra.Command{
 			APIKey:        apiKey,
 			Model:         modelFlag,
 			CustomPrompts: conf.CustomPrompts,
+			PunMode:       punFlag,
 		}
 
 		if cmd.Flags().Changed("system-prompt") {
@@ -108,6 +110,7 @@ func Execute() error {
 	rootCmd.Flags().StringVar(&systemPrompt, "system-prompt", "", "Override code-buddy's default system prompt with your own")
 	rootCmd.Flags().StringArrayVar(&files, "file", nil, "Include file(s) in context")
 	rootCmd.Flags().BoolVar(&listModels, "list-models", false, "List known models")
+	rootCmd.Flags().BoolVar(&punFlag, "pun", false, "Pun mode")
 
 	return rootCmd.Execute()
 }

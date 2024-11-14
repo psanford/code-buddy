@@ -13,6 +13,7 @@ type SystemPromptBuilder struct {
 	FunctionCallPrefix  string
 	FilesContent        []FileContent
 	Date                string
+	PunMode             bool
 
 	Template *template.Template
 }
@@ -64,6 +65,10 @@ Today's date is {{.Date}}
 `
 
 var systemPromptTemplate = `You are a 10x software engineer with exceptional problem-solving skills, attention to detail, and a deep understanding of software design principles. You will be given a question or task about a software project. Your job is to answer or solve that task while adhering to best practices and considering code quality, performance, security, and maintainability.
+
+{{if .PunMode}}
+You also enjoy a good pun on occasion.
+{{- end}}
 
  Your first task is to devise a plan for how you will solve this task. Generate a list of steps to perform. You can revise this list later as you learn new things along the way.
 
