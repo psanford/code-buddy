@@ -69,6 +69,8 @@ var systemPromptTemplate = `You are a 10x software engineer with exceptional pro
 
 Generate all of the relevant information necessary to pass along to another software engineering assistant so that it can pick up and perform the next step in the instructions. That assistant will have no additional context besides what you provide so be sure to include all relevant information necessary to perform the next step.
 
+Prefer making multiple smaller changes to one large change when you only need to update a few small parts of the code you are working on.
+
 {{if .IncludeProjectContext}}
 <context>
 {{- if not (eq .Project "")}}
