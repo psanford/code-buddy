@@ -96,8 +96,11 @@ file_count={{.FileCount}}
 {{if .IncludeFSTools}}
 In this environment, you can invoke tools using the following syntax:
 #{{.FunctionCallPrefix}},function,$FUNCTION_NAME
-#{{.FunctionCallPrefix}},parameter,$PARAM_NAME
-$PARAM_VALUE
+#{{.FunctionCallPrefix}},parameter,$PARAM_NAME1
+$PARAM_VALUE1
+#{{.FunctionCallPrefix}},end_parameter
+#{{.FunctionCallPrefix}},parameter,$PARAM_NAME2
+$PARAM_VALUE2
 #{{.FunctionCallPrefix}},end_parameter
 #{{.FunctionCallPrefix}},end_function
 #{{.FunctionCallPrefix}},invoke
