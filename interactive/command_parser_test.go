@@ -54,7 +54,7 @@ This is the content of param2
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseCommand(tt.input)
+			got, _, err := parseCommand(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseCommand() error = %v, wantErr %v", err, tt.wantErr)
 				return

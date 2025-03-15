@@ -8,17 +8,18 @@ import (
 func TestSystemPromptBuilderString(t *testing.T) {
 	tests := []struct {
 		name       string
-		builder    *SystemPromptBuilder
+		builder    func() *SystemPromptBuilder
 		expected   []string
 		unexpected []string
 	}{
 		{
 			name: "Filled Builder",
-			builder: &SystemPromptBuilder{
-				Project:             "test-project",
-				FileCount:           5,
-				FirstFilesInProject: []string{"file1.go", "file2.go"},
-				FunctionCallPrefix:  "overlapped-acknowledges",
+			builder: func() *SystemPromptBuilder {
+				b := newSystemPromptBuilder("test-project", "")
+				b.FileCount = 5
+				b.FirstFilesInProject = []string{"file1.go", "file2.go"}
+				b.FunctionCallPrefix = "overlapped-acknowledges"
+				return b
 			},
 			expected: []string{
 				"project=test-project",
@@ -40,9 +41,10 @@ func TestSystemPromptBuilderString(t *testing.T) {
 		},
 		{
 			name: "Empty Builder",
-			builder: &SystemPromptBuilder{
-				FunctionCallPrefix: "overlapped-acknowledges",
-				FileCount:          -1,
+			builder: func() *SystemPromptBuilder {
+				b := newSystemPromptBuilder("", "")
+				b.FunctionCallPrefix = "overlapped-acknowledges"
+				return b
 			},
 			expected: []string{
 				"#overlapped-acknowledges,function,$FUNCTION_NAME",
@@ -61,15 +63,16 @@ func TestSystemPromptBuilderString(t *testing.T) {
 		},
 		{
 			name: "Builder with FilesContent",
-			builder: &SystemPromptBuilder{
-				Project:             "test-project",
-				FileCount:           3,
-				FirstFilesInProject: []string{"file1.go", "file2.go", "file3.go"},
-				FunctionCallPrefix:  "overlapped-acknowledges",
-				FilesContent: []FileContent{
+			builder: func() *SystemPromptBuilder {
+				b := newSystemPromptBuilder("test-project", "")
+				b.FileCount = 3
+				b.FirstFilesInProject = []string{"file1.go", "file2.go", "file3.go"}
+				b.FunctionCallPrefix = "overlapped-acknowledges"
+				b.FilesContent = []FileContent{
 					{FileName: "file1.go", Content: "package main\n\nfunc main() {\n\tfmt.Println(\"Hello, World!\")\n}"},
 					{FileName: "file2.go", Content: "package main\n\nfunc add(a, b int) int {\n\treturn a + b\n}"},
-				},
+				}
+				return b
 			},
 			expected: []string{
 				"<file>",
@@ -99,7 +102,7 @@ func TestSystemPromptBuilderString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.builder.String()
+			result := tt.builder().String()
 
 			for _, element := range tt.expected {
 				if !strings.Contains(result, element) {
