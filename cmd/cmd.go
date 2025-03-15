@@ -67,7 +67,7 @@ var rootCmd = &cobra.Command{
 		if modelFlag == "" && conf.Model != "" {
 			modelFlag = conf.Model
 		} else if modelFlag == "" {
-			modelFlag = claude.Claude3Dot5SonnetLatest
+			modelFlag = claude.Claude3Dot7SonnetLatest
 		}
 
 		r := interactive.Runner{

@@ -5,7 +5,7 @@ go 1.22.3
 require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/chzyer/readline v1.5.1
-	github.com/psanford/claude v0.0.0-20241104193301-e6122ec6ecd7
+	github.com/psanford/claude v0.0.0-20250315183110-28f5729f7efc
 	github.com/spf13/cobra v1.8.1
 )
 

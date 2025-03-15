@@ -220,7 +220,9 @@ OUTER:
 		}
 
 		maxTokens := 0
-		if model == claude.Claude3Dot5Sonnet {
+		if model == claude.Claude3Dot7SonnetLatest || model == claude.Claude3Dot7Sonnet2502 {
+			maxTokens = 128000
+		} else if model == claude.Claude3Dot5Sonnet || model == claude.Claude3Dot5Sonnet2410 || model == claude.Claude3Dot5SonnetLatest {
 			maxTokens = 8192
 		}
 
@@ -505,8 +507,8 @@ type FunctionParameter struct {
 }
 
 var humanModelNameMap = map[string]string{
-	"haiku":  claude.Claude3HaikuLatest,
-	"sonnet": claude.Claude3Dot5SonnetLatest,
+	"haiku":  claude.Claude3Dot5HaikuLatest,
+	"sonnet": claude.Claude3Dot7SonnetLatest,
 	"opus":   claude.Claude3Opus,
 }
 
